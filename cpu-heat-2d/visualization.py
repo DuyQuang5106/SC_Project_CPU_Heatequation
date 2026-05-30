@@ -137,7 +137,10 @@ def create_animation(
     cbar = fig.colorbar(image, ax=ax)
     cbar.set_label("Temperature (deg C)")
 
-    frame_dt = result.dt * max(1, int(round(len(result.times) / max(1, len(result.animation_frames)))))
+    frame_dt = result.dt * max(
+        1,
+        int(round(len(result.times) / max(1, len(result.animation_frames)))),
+    )
 
     def update(frame_index: int):
         image.set_array(result.animation_frames[frame_index])
@@ -177,6 +180,54 @@ def plot_scenario_comparison(
     fig.tight_layout()
 
     path = output_dir / "comparison_tmax.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def plot_convergence_study(
+    study_name: str,
+    rows: list[dict],
+    output_dir: str | Path,
+) -> Path:
+    """Plot final Tmax from grid or time convergence rows."""
+    output_dir = ensure_output_dir(output_dir)
+
+    if study_name == "grid_convergence":
+        x_values = [row["grid_size"] for row in rows]
+        x_label = "Grid size N"
+        title = "Grid Convergence - Final Maximum Temperature"
+    elif study_name == "time_convergence":
+        x_values = [row["dt"] for row in rows]
+        x_label = "Time step dt (s)"
+        title = "Time Convergence - Final Maximum Temperature"
+    else:
+        raise ValueError(f"Unknown convergence study: {study_name}")
+
+    y_values = [row["tmax_final"] for row in rows]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    ax.plot(x_values, y_values, marker="o", linewidth=2)
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Final Tmax (deg C)")
+    ax.grid(True, alpha=0.3)
+
+    if study_name == "time_convergence":
+        ax.invert_xaxis()
+
+    for x_value, y_value in zip(x_values, y_values):
+        ax.annotate(
+            f"{y_value:.2f}",
+            xy=(x_value, y_value),
+            xytext=(0, 8),
+            textcoords="offset points",
+            ha="center",
+            fontsize=9,
+        )
+
+    fig.tight_layout()
+    path = output_dir / f"{study_name}.png"
     fig.savefig(path, dpi=160)
     plt.close(fig)
     return path

@@ -1,0 +1,9 @@
+Stability experiment
+====================
+
+This scenario intentionally uses a large dt so that r > 1/4.
+The solver rejects it before running because the explicit 2D heat
+scheme would be numerically unstable.
+
+Caught error:
+Unstable explicit scheme for scenario 'unstable_large_dt': r = 0.2996 > 0.25. Use dt <= 0.0500721.

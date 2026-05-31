@@ -22,6 +22,8 @@ class SimulationResult:
     r: float
     cooling_rate: float
     boundary_temperature: float
+    boundary_condition: str
+    boundary_cooling_rate: float
 
 
 def create_core_mask(grid_size: int, core_fraction: float) -> np.ndarray:
@@ -37,12 +39,34 @@ def create_core_mask(grid_size: int, core_fraction: float) -> np.ndarray:
     return mask
 
 
-def apply_boundary(u: np.ndarray, boundary_temperature: float) -> None:
+def create_boundary_mask(grid_size: int) -> np.ndarray:
+    """Create a mask for the four chip edges."""
+    mask = np.zeros((grid_size, grid_size), dtype=bool)
+    mask[0, :] = True
+    mask[-1, :] = True
+    mask[:, 0] = True
+    mask[:, -1] = True
+    return mask
+
+
+def apply_dirichlet_boundary(u: np.ndarray, boundary_temperature: float) -> None:
     """Keep the four chip edges fixed at the cooling temperature."""
     u[0, :] = boundary_temperature
     u[-1, :] = boundary_temperature
     u[:, 0] = boundary_temperature
     u[:, -1] = boundary_temperature
+
+
+def laplacian_with_insulated_outer_edge(u: np.ndarray) -> np.ndarray:
+    """Compute a 2D Laplacian using zero-flux ghost values outside the chip."""
+    padded = np.pad(u, pad_width=1, mode="edge")
+    return (
+        padded[2:, 1:-1]
+        + padded[:-2, 1:-1]
+        + padded[1:-1, 2:]
+        + padded[1:-1, :-2]
+        - 4.0 * u
+    )
 
 
 def solve_heat_equation(
@@ -60,6 +84,8 @@ def solve_heat_equation(
     cooling_rate: float,
     snapshot_times: list[float],
     animation_stride: int,
+    boundary_condition: str = "dirichlet",
+    boundary_cooling_rate: float = 0.0,
 ) -> SimulationResult:
     """Solve the 2D heat equation with an explicit finite difference method.
 
@@ -67,19 +93,30 @@ def solve_heat_equation(
 
         U_new[i, j] = U[i, j] + r * neighbor_sum + dt * Q[i, j]
 
-    A simple optional cooling term is also included:
+    A simple optional internal cooling term is also included:
 
         -dt * cooling_rate * (U[i, j] - boundary_temperature)
 
-    Use cooling_rate = 0 for the pure heat equation with only cooled edges.
+    For boundary_condition = "dirichlet", the four edges are fixed at
+    boundary_temperature. For boundary_condition = "robin", the edges are not
+    fixed; instead they lose heat by a Newton/Robin cooling term proportional
+    to their temperature difference from boundary_temperature.
 
     where r = alpha * dt / dx^2 and neighbor_sum is the difference between
     the four neighbor temperatures and 4 times the current temperature.
     """
     if grid_size < 3:
         raise ValueError("grid_size must be at least 3.")
+    if chip_size <= 0.0 or alpha <= 0.0:
+        raise ValueError("chip_size and alpha must be positive.")
     if dt <= 0 or total_time <= 0:
         raise ValueError("dt and total_time must be positive.")
+    if cooling_rate < 0.0 or boundary_cooling_rate < 0.0:
+        raise ValueError("cooling rates must be non-negative.")
+    if animation_stride <= 0:
+        raise ValueError("animation_stride must be positive.")
+    if boundary_condition not in {"dirichlet", "robin"}:
+        raise ValueError("boundary_condition must be 'dirichlet' or 'robin'.")
 
     dx = chip_size / (grid_size - 1)
     r = alpha * dt / (dx * dx)
@@ -94,9 +131,11 @@ def solve_heat_equation(
     times = np.linspace(0.0, steps * dt, steps + 1)
 
     u = np.full((grid_size, grid_size), initial_temperature, dtype=float)
-    apply_boundary(u, boundary_temperature)
+    if boundary_condition == "dirichlet":
+        apply_dirichlet_boundary(u, boundary_temperature)
 
     core_mask = create_core_mask(grid_size, core_fraction)
+    boundary_mask = create_boundary_mask(grid_size)
     q = np.zeros_like(u)
     q[core_mask] = q_strength
 
@@ -124,22 +163,35 @@ def solve_heat_equation(
         if step == steps:
             break
 
-        u_new = u.copy()
-        u_new[1:-1, 1:-1] = (
-            u[1:-1, 1:-1]
-            + r
-            * (
-                u[2:, 1:-1]
-                + u[:-2, 1:-1]
-                + u[1:-1, 2:]
-                + u[1:-1, :-2]
-                - 4.0 * u[1:-1, 1:-1]
+        if boundary_condition == "dirichlet":
+            u_new = u.copy()
+            u_new[1:-1, 1:-1] = (
+                u[1:-1, 1:-1]
+                + r
+                * (
+                    u[2:, 1:-1]
+                    + u[:-2, 1:-1]
+                    + u[1:-1, 2:]
+                    + u[1:-1, :-2]
+                    - 4.0 * u[1:-1, 1:-1]
+                )
+                + dt * q[1:-1, 1:-1]
+                - dt * cooling_rate * (u[1:-1, 1:-1] - boundary_temperature)
             )
-            + dt * q[1:-1, 1:-1]
-            - dt * cooling_rate * (u[1:-1, 1:-1] - boundary_temperature)
-        )
+            apply_dirichlet_boundary(u_new, boundary_temperature)
+        else:
+            u_new = (
+                u
+                + r * laplacian_with_insulated_outer_edge(u)
+                + dt * q
+                - dt * cooling_rate * (u - boundary_temperature)
+            )
+            u_new[boundary_mask] -= (
+                dt
+                * boundary_cooling_rate
+                * (u[boundary_mask] - boundary_temperature)
+            )
 
-        apply_boundary(u_new, boundary_temperature)
         u = u_new
 
     return SimulationResult(
@@ -156,4 +208,6 @@ def solve_heat_equation(
         r=r,
         cooling_rate=cooling_rate,
         boundary_temperature=boundary_temperature,
+        boundary_condition=boundary_condition,
+        boundary_cooling_rate=boundary_cooling_rate,
     )

@@ -24,6 +24,7 @@ class SimulationResult:
     boundary_temperature: float
     boundary_condition: str
     boundary_cooling_rate: float
+    stop_reason: str | None = None
 
 
 def create_core_mask(grid_size: int, core_fraction: float) -> np.ndarray:
@@ -86,6 +87,9 @@ def solve_heat_equation(
     animation_stride: int,
     boundary_condition: str = "dirichlet",
     boundary_cooling_rate: float = 0.0,
+    enforce_stability: bool = True,
+    checkerboard_perturbation: float = 0.0,
+    stop_temperature_limit: float | None = None,
 ) -> SimulationResult:
     """Solve the 2D heat equation with an explicit finite difference method.
 
@@ -117,10 +121,14 @@ def solve_heat_equation(
         raise ValueError("animation_stride must be positive.")
     if boundary_condition not in {"dirichlet", "robin"}:
         raise ValueError("boundary_condition must be 'dirichlet' or 'robin'.")
+    if checkerboard_perturbation < 0.0:
+        raise ValueError("checkerboard_perturbation must be non-negative.")
+    if stop_temperature_limit is not None and stop_temperature_limit <= 0.0:
+        raise ValueError("stop_temperature_limit must be positive.")
 
     dx = chip_size / (grid_size - 1)
     r = alpha * dt / (dx * dx)
-    if r > 0.25:
+    if enforce_stability and r > 0.25:
         stable_dt = 0.25 * dx * dx / alpha
         raise ValueError(
             f"Unstable explicit scheme for scenario '{scenario_name}': "
@@ -136,6 +144,13 @@ def solve_heat_equation(
 
     core_mask = create_core_mask(grid_size, core_fraction)
     boundary_mask = create_boundary_mask(grid_size)
+    if checkerboard_perturbation > 0.0:
+        row_indices, col_indices = np.indices(u.shape)
+        checkerboard = np.where((row_indices + col_indices) % 2 == 0, 1.0, -1.0)
+        u[~boundary_mask] += checkerboard_perturbation * checkerboard[~boundary_mask]
+        if boundary_condition == "dirichlet":
+            apply_dirichlet_boundary(u, boundary_temperature)
+
     q = np.zeros_like(u)
     q[core_mask] = q_strength
 
@@ -148,19 +163,20 @@ def solve_heat_equation(
     stored_snapshot_times: list[float] = []
     animation_frames: list[np.ndarray] = []
     tmax = np.empty(steps + 1, dtype=float)
+    stop_reason: str | None = None
 
     for step in range(steps + 1):
         current_time = step * dt
         tmax[step] = float(np.max(u))
 
-        if step in snapshot_indices:
+        if step in snapshot_indices or stop_reason is not None:
             snapshots.append(u.copy())
             stored_snapshot_times.append(current_time)
 
-        if step % animation_stride == 0 or step == steps:
+        if step % animation_stride == 0 or step == steps or stop_reason is not None:
             animation_frames.append(u.copy())
 
-        if step == steps:
+        if step == steps or stop_reason is not None:
             break
 
         if boundary_condition == "dirichlet":
@@ -194,6 +210,22 @@ def solve_heat_equation(
 
         u = u_new
 
+        if not np.all(np.isfinite(u)):
+            stop_reason = (
+                f"Stopped at t = {(step + 1) * dt:.4f} s because the "
+                "temperature field became non-finite."
+            )
+        elif (
+            stop_temperature_limit is not None
+            and float(np.max(np.abs(u))) >= stop_temperature_limit
+        ):
+            stop_reason = (
+                f"Stopped at t = {(step + 1) * dt:.4f} s because "
+                f"|temperature| exceeded {stop_temperature_limit:g} deg C."
+            )
+
+    times = times[: step + 1]
+    tmax = tmax[: step + 1]
     return SimulationResult(
         scenario_name=scenario_name,
         times=times,
@@ -210,4 +242,5 @@ def solve_heat_equation(
         boundary_temperature=boundary_temperature,
         boundary_condition=boundary_condition,
         boundary_cooling_rate=boundary_cooling_rate,
+        stop_reason=stop_reason,
     )

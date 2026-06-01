@@ -31,7 +31,29 @@ This shows how the numerical result changes as the mesh or time step is refined.
 In a Scientific Computing report, this is useful because a numerical solution
 should not depend too strongly on an arbitrary grid choice.
 
-## 2. Stability Experiment
+## 2. Unstable Error Blow-up Demo
+
+The project also includes a runnable unstable demo saved with the same structure
+as the main scenarios:
+
+```text
+outputs/unstable_error_blowup/
+outputs/unstable_error_blowup/unstable_error_blowup_heatmap_snapshots.png
+outputs/unstable_error_blowup/unstable_error_blowup_final_heatmap.png
+outputs/unstable_error_blowup/unstable_error_blowup_tmax.png
+outputs/unstable_error_blowup/unstable_error_blowup_animation.gif
+outputs/unstable_error_blowup/unstable_error_blowup_report.txt
+```
+
+This scenario intentionally disables the stability guard and uses `r > 1/4`.
+A very small checkerboard perturbation is added to the initial condition. This
+perturbation represents high-frequency numerical error, and for `r > 1/4` it
+grows rapidly instead of being damped. The result is a visible numerical blow-up
+in the heatmaps and in the `Tmax(t)` plot.
+
+The normal scenarios still keep the stability guard enabled.
+
+## 3. Stability Guard Experiment
 
 The explicit finite difference method for the 2D heat equation requires:
 
@@ -50,7 +72,7 @@ outputs/numerical_studies/stability_experiment.txt
 This demonstrates that the implementation checks numerical stability, not just
 that it produces images.
 
-## 3. Robin Boundary Cooling
+## 4. Robin Boundary Cooling
 
 The original model keeps the chip boundary fixed at `25 deg C`, which is a
 Dirichlet boundary condition:

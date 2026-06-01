@@ -109,3 +109,19 @@ def get_stability_experiment_scenario() -> dict:
         "title": "Stability Experiment: r > 1/4",
         "dt": 0.06,
     }
+
+
+def get_unstable_blowup_scenario() -> dict:
+    """Return an intentionally unstable run that visualizes error blow-up."""
+    return {
+        **BASE_SCENARIO,
+        "name": "unstable_error_blowup",
+        "title": "Unstable Run: Error Blow-up when r > 1/4",
+        "dt": 0.06,
+        "total_time": 5.0,
+        "snapshot_times": [0.6, 1.2, 2.4, 3.6, 4.8],
+        "animation_stride": 1,
+        "enforce_stability": False,
+        "checkerboard_perturbation": 1.0e-6,
+        "stop_temperature_limit": 1.0e5,
+    }

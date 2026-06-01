@@ -1,0 +1,15 @@
+Unstable error blow-up demo
+===========================
+
+This run intentionally disables the stability guard and uses r > 1/4.
+A tiny checkerboard perturbation is added to the initial temperature field
+so the unstable high-frequency error mode becomes visible.
+
+grid_size: 80
+dt: 0.06
+dx: 0.012658227848101266
+r: 0.299568
+checkerboard_perturbation: 1e-06
+final_recorded_time: 3.3000 s
+final_recorded_Tmax: 112811 deg C
+stop_reason: Stopped at t = 3.3000 s because |temperature| exceeded 100000 deg C.

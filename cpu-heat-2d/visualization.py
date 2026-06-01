@@ -20,6 +20,8 @@ def _temperature_limits(result: SimulationResult) -> tuple[float, float]:
     values.extend(result.animation_frames)
     vmin = min(float(np.min(frame)) for frame in values)
     vmax = max(float(np.max(frame)) for frame in values)
+    if result.stop_reason is not None and vmin < result.boundary_temperature:
+        vmin = result.boundary_temperature
     return vmin, vmax
 
 
@@ -74,9 +76,16 @@ def plot_final_heatmap(
 ) -> Path:
     output_dir = ensure_output_dir(output_dir)
     final_temperature = result.snapshots[-1]
+    vmin, vmax = _temperature_limits(result)
 
     fig, ax = plt.subplots(figsize=(6, 5))
-    image = ax.imshow(final_temperature, cmap="inferno", origin="lower")
+    image = ax.imshow(
+        final_temperature,
+        cmap="inferno",
+        vmin=vmin,
+        vmax=vmax,
+        origin="lower",
+    )
     ax.contour(result.core_mask, levels=[0.5], colors="cyan", linewidths=1.0)
     ax.set_title(f"{title} - Final Temperature")
     ax.set_xlabel("x grid index")
